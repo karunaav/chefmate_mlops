@@ -3,10 +3,11 @@ serve/app.py — ChefMate Substitution API
 =========================================
 GET  /health
 POST /substitute   { "recipe_ingredients": ["flour","egg"], "missing": "butter" }
-                → { "substitutions": [{"ingredient": "margarine", "score": 0.92}, ...] }
+                -> { "substitutions": [{"ingredient": "margarine", "score": 0.92}, ...] }
 """
-import json, os, time
-from pathlib import Path
+import json
+import os
+import time
 from typing import List
 
 import torch
@@ -18,18 +19,19 @@ from starlette.responses import PlainTextResponse
 
 app = FastAPI(title="ChefMate Substitution API", version="1.0")
 
-# ── Prometheus metrics ──────────────────────────────────────
-REQUEST_COUNT   = Counter("substitute_requests_total", "Total requests")
+# Prometheus metrics
+REQUEST_COUNT = Counter("substitute_requests_total", "Total requests")
 REQUEST_LATENCY = Histogram("substitute_latency_seconds", "Request latency")
-HIT_COUNTER     = Counter("substitute_hits_total", "Times top-1 was confirmed correct")
+HIT_COUNTER = Counter("substitute_hits_total", "Times top-1 was confirmed correct")
 
-# ── Load model + vocab on startup ──────────────────────────
-MLFLOW_URI   = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-MODEL_URI    = os.getenv("MODEL_URI", "models:/chefmate-substitution/Production")
-VOCAB_PATH   = os.getenv("VOCAB_PATH", "data/processed/vocab.json")
-TOP_K        = int(os.getenv("TOP_K", "10"))
+# Load model + vocab on startup
+MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+MODEL_URI = os.getenv("MODEL_URI", "models:/chefmate-substitution/Production")
+VOCAB_PATH = os.getenv("VOCAB_PATH", "data/processed/vocab.json")
+TOP_K = int(os.getenv("TOP_K", "10"))
 
 model, vocab, id2ing = None, None, None
+
 
 @app.on_event("startup")
 def load_model():
@@ -43,21 +45,23 @@ def load_model():
     print(f"Model loaded from {MODEL_URI}. Vocab size: {len(vocab)}")
 
 
-# ── Schemas ─────────────────────────────────────────────────
+# Schemas
 class SubRequest(BaseModel):
     recipe_ingredients: List[str]
     missing: str
 
+
 class SubResult(BaseModel):
     ingredient: str
     score: float
+
 
 class SubResponse(BaseModel):
     substitutions: List[SubResult]
     latency_ms: float
 
 
-# ── Endpoints ───────────────────────────────────────────────
+# Endpoints
 @app.get("/health")
 def health():
     return {"status": "ok", "model_loaded": model is not None}
@@ -83,7 +87,7 @@ def substitute(req: SubRequest):
 
     t0 = time.time()
     with torch.no_grad():
-        logits = model(ctx, src)[0]           # (vocab_size,)
+        logits = model(ctx, src)[0]
         scores, indices = logits.topk(TOP_K)
         scores = torch.softmax(scores, dim=0)
     latency_ms = (time.time() - t0) * 1000
