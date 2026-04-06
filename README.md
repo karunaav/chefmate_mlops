@@ -134,4 +134,4 @@ Each run logs:
 | Training | Krishan | Model training pipeline, MLflow, hyperparameter search |
 | Training | Hivansh | Serving layer, FastAPI, model registry |
 | Data | Karuna | Mealie integration, data pipeline, frontend UX |
-| DevOps | — | Chameleon provisioning, Docker Compose, monitoring, CI/CD |
+| DevOps | Daniel Fu | Chameleon provisioning, Docker Compose, monitoring, CI/CD |
