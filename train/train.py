@@ -300,7 +300,7 @@ def main():
             for split, loader in [("val", val_loader), ("test", test_loader)]:
                 hits = eval_baseline(baseline, loader, device, cfg["top_k"])
                 for k, v in hits.items():
-                    mlflow.log_metric(f"{split}_hit@{k}", v)
+                    mlflow.log_metric(f"{split}_hit_at_{k}", v)
                 log.info("%s hits: %s", split, hits)
             mlflow.log_metric("total_training_time_sec", time.time() - t_total)
             return
@@ -338,7 +338,7 @@ def main():
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                     "epoch_time_sec": ep_sec,
-                    **{f"val_hit@{k}": v for k, v in val_hits.items()},
+                    **{f"val_hit_at_{k}": v for k, v in val_hits.items()},
                 },
                 step=epoch,
             )
@@ -362,12 +362,12 @@ def main():
         model.load_state_dict(torch.load(ckpt))
         _, test_hits = eval_epoch(model, test_loader, device, cfg["top_k"])
         for k, v in test_hits.items():
-            mlflow.log_metric(f"test_hit@{k}", v)
+            mlflow.log_metric(f"test_hit_at_{k}", v)
         log.info("Test hits: %s", test_hits)
 
         mlflow.log_metrics({
             "total_training_time_sec": time.time() - t_total,
-            "best_val_hit@1": best_hit1,
+            "best_val_hit_at_1": best_hit1,
         })
         mlflow.pytorch.log_model(model, "model")
         log.info("Done.")
