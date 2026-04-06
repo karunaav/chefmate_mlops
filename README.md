@@ -127,11 +127,5 @@ Each run logs:
 
 ---
 
-## 👥 Team — Project 05
+## 👥 Team — Project 01
 
-| Role | Name | Responsibilities |
-|---|---|---|
-| Training | Krishan | Model training pipeline, MLflow, hyperparameter search |
-| Training | Hivansh | Serving layer, FastAPI, model registry |
-| Data | Karuna | Mealie integration, data pipeline, frontend UX |
-| DevOps | Daniel Fu | Chameleon provisioning, Docker Compose, monitoring, CI/CD |
