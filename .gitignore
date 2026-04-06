@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+data/raw/
+data/processed/
+mlflow.db
+mlflow-artifacts/
+*.pt
+*.pth
+.DS_Store

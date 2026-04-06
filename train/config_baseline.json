@@ -1,0 +1,10 @@
+{
+  "model": "baseline",
+  "data_dir": "data/processed",
+  "top_k": [1, 5, 10],
+  "batch_size": 512,
+  "seed": 42,
+  "mlflow_tracking_uri": "http://localhost:5000",
+  "experiment_name": "chefmate-substitution",
+  "run_name": "baseline-frequency"
+}

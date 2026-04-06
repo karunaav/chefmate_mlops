@@ -1,0 +1,10 @@
+{
+  "substitutions": [
+    {"ingredient": "margarine",      "score": 0.4821},
+    {"ingredient": "coconut oil",    "score": 0.2134},
+    {"ingredient": "applesauce",     "score": 0.1043},
+    {"ingredient": "vegetable oil",  "score": 0.0872},
+    {"ingredient": "greek yogurt",   "score": 0.0612}
+  ],
+  "latency_ms": 12.4
+}

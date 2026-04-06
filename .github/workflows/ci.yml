@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r train/requirements.txt
+          pip install -r serve/requirements.txt
+          pip install flake8 pytest
+
+      - name: Lint
+        run: flake8 train/train.py serve/app.py --max-line-length=110
+
+      - name: Import check
+        run: |
+          python -c "import train.train"
+          python -c "import serve.app"

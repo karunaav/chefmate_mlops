@@ -1,0 +1,18 @@
+{
+  "model": "gismo",
+  "data_dir": "data/processed",
+  "embed_dim": 128,
+  "hidden_dim": 256,
+  "num_layers": 2,
+  "dropout": 0.3,
+  "lr": 0.001,
+  "weight_decay": 1e-5,
+  "batch_size": 256,
+  "epochs": 30,
+  "patience": 5,
+  "top_k": [1, 5, 10],
+  "seed": 42,
+  "mlflow_tracking_uri": "http://localhost:5000",
+  "experiment_name": "chefmate-substitution",
+  "run_name": "gismo-emb128-h256"
+}
