@@ -9,7 +9,11 @@ Usage:
   python train/train.py --model gismo --embed_dim 256 --lr 0.0005
 """
 
-import argparse, json, os, time, subprocess, logging
+import argparse
+import json
+import time
+import subprocess
+import logging
 from pathlib import Path
 from collections import defaultdict
 
@@ -28,23 +32,24 @@ log = logging.getLogger(__name__)
 # DEFAULT CONFIG
 # ──────────────────────────────────────────────────────────────
 DEFAULT_CONFIG = {
-    "model":                "gismo",      # baseline | mlp | gismo
-    "data_dir":             "data/processed",
-    "embed_dim":            128,
-    "hidden_dim":           256,
-    "num_layers":           2,
-    "dropout":              0.3,
-    "lr":                   1e-3,
-    "weight_decay":         1e-5,
-    "batch_size":           256,
-    "epochs":               30,
-    "patience":             5,
-    "top_k":                [1, 5, 10],
-    "seed":                 42,
-    "mlflow_tracking_uri":  "http://localhost:5000",
-    "experiment_name":      "chefmate-substitution",
-    "run_name":             None,
+    "model": "gismo",
+    "data_dir": "data/processed",
+    "embed_dim": 128,
+    "hidden_dim": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "lr": 1e-3,
+    "weight_decay": 1e-5,
+    "batch_size": 256,
+    "epochs": 30,
+    "patience": 5,
+    "top_k": [1, 5, 10],
+    "seed": 42,
+    "mlflow_tracking_uri": "http://localhost:5000",
+    "experiment_name": "chefmate-substitution",
+    "run_name": None,
 }
+
 
 # ──────────────────────────────────────────────────────────────
 # DATASET
@@ -54,6 +59,7 @@ class SubstitutionDataset(Dataset):
     Each JSON record:
       { "recipe_ingredients": [int, ...], "source": int, "target": int }
     """
+
     def __init__(self, path, vocab_size):
         with open(path) as f:
             self.samples = json.load(f)
@@ -67,8 +73,9 @@ class SubstitutionDataset(Dataset):
         ctx = torch.zeros(self.vocab_size)
         for i in s["recipe_ingredients"]:
             ctx[i] = 1.0
-        return ctx, torch.tensor(s["source"], dtype=torch.long), \
-                    torch.tensor(s["target"], dtype=torch.long)
+        source = torch.tensor(s["source"], dtype=torch.long)
+        target = torch.tensor(s["target"], dtype=torch.long)
+        return ctx, source, target
 
 
 def load_vocab(data_dir):
@@ -78,17 +85,25 @@ def load_vocab(data_dir):
 
 def build_loaders(cfg, vocab_size):
     d = Path(cfg["data_dir"])
+
     def make(split):
         ds = SubstitutionDataset(d / f"{split}.json", vocab_size)
-        return DataLoader(ds, batch_size=cfg["batch_size"],
-                          shuffle=(split == "train"),
-                          num_workers=4, pin_memory=True)
+        return DataLoader(
+            ds,
+            batch_size=cfg["batch_size"],
+            shuffle=(split == "train"),
+            num_workers=4,
+            pin_memory=True,
+        )
+
     return make("train"), make("val"), make("test")
+
 
 # ──────────────────────────────────────────────────────────────
 # MODELS
 # ──────────────────────────────────────────────────────────────
 class FrequencyBaseline:
+
     def __init__(self, vocab_size):
         self.vocab_size = vocab_size
         self.counts = defaultdict(lambda: defaultdict(int))
@@ -108,18 +123,21 @@ class FrequencyBaseline:
 
 
 class GISMoModel(nn.Module):
-    """Source embedding + recipe bag-of-words context → ranked targets."""
+    """Source embedding + recipe bag-of-words context -> ranked targets."""
+
     def __init__(self, vocab_size, embed_dim, hidden_dim, num_layers, dropout):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
-        layers, in_dim = [], vocab_size
+        layers = []
+        in_dim = vocab_size
         for _ in range(num_layers):
             layers += [nn.Linear(in_dim, hidden_dim), nn.ReLU(), nn.Dropout(dropout)]
             in_dim = hidden_dim
         self.ctx_enc = nn.Sequential(*layers)
         self.head = nn.Sequential(
             nn.Linear(embed_dim + hidden_dim, hidden_dim),
-            nn.ReLU(), nn.Dropout(dropout),
+            nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, vocab_size),
         )
 
@@ -129,10 +147,12 @@ class GISMoModel(nn.Module):
 
 class MLPModel(nn.Module):
     """Simple source-only MLP. No recipe context."""
+
     def __init__(self, vocab_size, embed_dim, hidden_dim, num_layers, dropout):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
-        layers, in_dim = [], embed_dim
+        layers = []
+        in_dim = embed_dim
         for _ in range(num_layers):
             layers += [nn.Linear(in_dim, hidden_dim), nn.ReLU(), nn.Dropout(dropout)]
             in_dim = hidden_dim
@@ -142,45 +162,57 @@ class MLPModel(nn.Module):
     def forward(self, ctx, src):
         return self.net(self.embed(src))
 
+
 # ──────────────────────────────────────────────────────────────
 # METRICS
 # ──────────────────────────────────────────────────────────────
 def hit_at_k(logits, targets, k_list):
     _, topk = logits.topk(max(k_list), dim=-1)
-    return {k: (topk[:, :k] == targets.unsqueeze(1)).any(1).float().mean().item()
-            for k in k_list}
+    return {
+        k: (topk[:, :k] == targets.unsqueeze(1)).any(1).float().mean().item()
+        for k in k_list
+    }
+
 
 # ──────────────────────────────────────────────────────────────
 # TRAIN / EVAL
 # ──────────────────────────────────────────────────────────────
 def train_epoch(model, loader, optimizer, device):
     model.train()
-    loss_sum, n, t0 = 0.0, 0, time.time()
+    loss_sum = 0.0
+    n = 0
+    t0 = time.time()
     for ctx, src, tgt in loader:
         ctx, src, tgt = ctx.to(device), src.to(device), tgt.to(device)
         optimizer.zero_grad()
         loss = F.cross_entropy(model(ctx, src), tgt)
         loss.backward()
         optimizer.step()
-        loss_sum += loss.item() * len(tgt); n += len(tgt)
+        loss_sum += loss.item() * len(tgt)
+        n += len(tgt)
     return loss_sum / n, time.time() - t0
+
 
 @torch.no_grad()
 def eval_epoch(model, loader, device, k_list):
     model.eval()
-    loss_sum, n = 0.0, 0
+    loss_sum = 0.0
+    n = 0
     hit_acc = defaultdict(float)
     for ctx, src, tgt in loader:
         ctx, src, tgt = ctx.to(device), src.to(device), tgt.to(device)
         logits = model(ctx, src)
-        loss_sum += F.cross_entropy(logits, tgt).item() * len(tgt); n += len(tgt)
+        loss_sum += F.cross_entropy(logits, tgt).item() * len(tgt)
+        n += len(tgt)
         for k, v in hit_at_k(logits, tgt, k_list).items():
             hit_acc[k] += v * len(tgt)
     return loss_sum / n, {k: hit_acc[k] / n for k in k_list}
 
+
 @torch.no_grad()
 def eval_baseline(baseline, loader, device, k_list):
-    hit_acc, n = defaultdict(float), 0
+    hit_acc = defaultdict(float)
+    n = 0
     for _, src, tgt in loader:
         scores = baseline.predict(src).to(device)
         for k, v in hit_at_k(scores, tgt.to(device), k_list).items():
@@ -188,12 +220,15 @@ def eval_baseline(baseline, loader, device, k_list):
         n += len(tgt)
     return {k: hit_acc[k] / n for k in k_list}
 
+
 # ──────────────────────────────────────────────────────────────
 # GPU INFO
 # ──────────────────────────────────────────────────────────────
 def gpu_info():
-    info = {"cuda_available": torch.cuda.is_available(),
-            "device_count":   torch.cuda.device_count()}
+    info = {
+        "cuda_available": torch.cuda.is_available(),
+        "device_count": torch.cuda.device_count(),
+    }
     if torch.cuda.is_available():
         info["device_name"] = torch.cuda.get_device_name(0)
     try:
@@ -203,19 +238,21 @@ def gpu_info():
         pass
     return info
 
+
 # ──────────────────────────────────────────────────────────────
 # CLI / CONFIG
 # ──────────────────────────────────────────────────────────────
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--config", type=str)
-    for k in ["model","data_dir","run_name","mlflow_tracking_uri","experiment_name"]:
+    for k in ["model", "data_dir", "run_name", "mlflow_tracking_uri", "experiment_name"]:
         p.add_argument(f"--{k}", type=str)
-    for k in ["embed_dim","hidden_dim","num_layers","batch_size","epochs","patience","seed"]:
+    for k in ["embed_dim", "hidden_dim", "num_layers", "batch_size", "epochs", "patience", "seed"]:
         p.add_argument(f"--{k}", type=int)
-    for k in ["lr","weight_decay","dropout"]:
+    for k in ["lr", "weight_decay", "dropout"]:
         p.add_argument(f"--{k}", type=float)
     return p.parse_args()
+
 
 def build_config(args):
     cfg = dict(DEFAULT_CONFIG)
@@ -227,18 +264,20 @@ def build_config(args):
             cfg[k] = v
     return cfg
 
+
 # ──────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────
 def main():
     args = parse_args()
-    cfg  = build_config(args)
-    torch.manual_seed(cfg["seed"]); np.random.seed(cfg["seed"])
+    cfg = build_config(args)
+    torch.manual_seed(cfg["seed"])
+    np.random.seed(cfg["seed"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info("Device: %s", device)
 
-    vocab      = load_vocab(cfg["data_dir"])
+    vocab = load_vocab(cfg["data_dir"])
     vocab_size = len(vocab)
     log.info("Vocab size: %d", vocab_size)
 
@@ -253,7 +292,7 @@ def main():
 
         t_total = time.time()
 
-        # ── BASELINE ────────────────────────────────────────────
+        # BASELINE
         if cfg["model"] == "baseline":
             baseline = FrequencyBaseline(vocab_size)
             baseline.fit(Path(cfg["data_dir"]) / "train.json")
@@ -266,21 +305,27 @@ def main():
             mlflow.log_metric("total_training_time_sec", time.time() - t_total)
             return
 
-        # ── NEURAL MODELS ───────────────────────────────────────
+        # NEURAL MODELS
         train_loader, val_loader, test_loader = build_loaders(cfg, vocab_size)
 
-        model = {
-            "gismo": GISMoModel,
-            "mlp":   MLPModel,
-        }[cfg["model"]](vocab_size, cfg["embed_dim"], cfg["hidden_dim"],
-                        cfg["num_layers"], cfg["dropout"]).to(device)
+        model_cls = {"gismo": GISMoModel, "mlp": MLPModel}[cfg["model"]]
+        model = model_cls(
+            vocab_size,
+            cfg["embed_dim"],
+            cfg["hidden_dim"],
+            cfg["num_layers"],
+            cfg["dropout"],
+        ).to(device)
 
-        optimizer = torch.optim.Adam(model.parameters(),
-                                     lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
+        )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, patience=2, factor=0.5)
+            optimizer, patience=2, factor=0.5
+        )
 
-        best_hit1, patience_cnt = -1, 0
+        best_hit1 = -1
+        patience_cnt = 0
         ckpt = f"/tmp/best_{run_name}.pt"
 
         for epoch in range(1, cfg["epochs"] + 1):
@@ -288,17 +333,21 @@ def main():
             val_loss, val_hits = eval_epoch(model, val_loader, device, cfg["top_k"])
             scheduler.step(val_loss)
 
-            mlflow.log_metrics({
-                "train_loss":      train_loss,
-                "val_loss":        val_loss,
-                "epoch_time_sec":  ep_sec,
-                **{f"val_hit@{k}": v for k, v in val_hits.items()},
-            }, step=epoch)
+            mlflow.log_metrics(
+                {
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "epoch_time_sec": ep_sec,
+                    **{f"val_hit@{k}": v for k, v in val_hits.items()},
+                },
+                step=epoch,
+            )
 
-            log.info("Epoch %02d | train_loss=%.4f | val_loss=%.4f | "
-                     "Hit@1=%.4f Hit@5=%.4f | %.1fs",
-                     epoch, train_loss, val_loss,
-                     val_hits.get(1, 0), val_hits.get(5, 0), ep_sec)
+            log.info(
+                "Epoch %02d | train_loss=%.4f | val_loss=%.4f | Hit@1=%.4f Hit@5=%.4f | %.1fs",
+                epoch, train_loss, val_loss,
+                val_hits.get(1, 0), val_hits.get(5, 0), ep_sec,
+            )
 
             if val_hits.get(1, 0) > best_hit1:
                 best_hit1 = val_hits.get(1, 0)
@@ -318,10 +367,11 @@ def main():
 
         mlflow.log_metrics({
             "total_training_time_sec": time.time() - t_total,
-            "best_val_hit@1":          best_hit1,
+            "best_val_hit@1": best_hit1,
         })
         mlflow.pytorch.log_model(model, "model")
         log.info("Done.")
+
 
 if __name__ == "__main__":
     main()
